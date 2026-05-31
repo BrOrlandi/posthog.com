@@ -4,16 +4,21 @@ sidebar: Docs
 showTitle: true
 ---
 
-Business knowledge lets you upload custom information that the PostHog AI assistant can search when responding to support tickets. This includes product documentation, support policies, internal guides, and FAQs specific to your business.
+Business knowledge lets you upload custom information that PostHog AI can search. This includes product documentation, support policies, internal guides, and FAQs specific to your business.
 
-When enabled, the AI assistant searches your knowledge base before composing a reply to every customer message.
+When you add business knowledge, it becomes available in two places:
+
+- **[PostHog AI](/docs/posthog-ai/overview)** – Ask questions about your own product, policies, or domain. PostHog AI searches your knowledge base for answers.
+- **Support** – The AI assistant searches your knowledge base when composing replies to customer messages.
 
 ## How it works
 
-1. You add knowledge sources containing information about your business
-2. When a customer sends a message, the AI assistant searches your knowledge base first
-3. If relevant information is found, the assistant uses it to provide more accurate, context-aware responses
+1. Add knowledge sources with information about your business
+2. PostHog AI and the Support assistant search your knowledge base when relevant
+3. Matching content informs more accurate, context-aware responses
 4. The assistant cites the source name so you know where the information came from
+
+PostHog AI automatically searches your business knowledge when a question relates to your product rather than PostHog itself.
 
 ## Adding knowledge sources
 
@@ -53,10 +58,10 @@ Changes take effect for new conversations. The assistant doesn't see updates mid
 
 ## How the assistant uses knowledge
 
-When a customer sends a message, the AI assistant automatically:
+When you ask a question or a customer sends a support message, the AI assistant:
 
-1. Searches your knowledge base using keywords from the customer's message
-2. Retrieves relevant chunks of content
+1. Searches your knowledge base using keywords from the message
+2. Retrieves relevant chunks of content along with surrounding context
 3. Uses that content to inform its response
 4. Cites the source name (e.g., "According to your refund policy...")
 
