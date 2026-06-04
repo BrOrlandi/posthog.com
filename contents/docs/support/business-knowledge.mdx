@@ -41,6 +41,28 @@ Good candidates for business knowledge:
 
 </CalloutBox>
 
+## Adding URL sources
+
+You can also import content from websites:
+
+1. Go to **Support > Settings > Business knowledge**
+2. Click **Add source** and select **URL**
+3. Enter a **Name** for the source
+4. Enter the **URL** to fetch content from
+5. Choose a **Crawl mode**:
+   - **Single page** – Fetches only the specified URL
+   - **Sitemap** – Discovers pages from the site's sitemap
+   - **Same origin** – Crawls links within the same domain
+6. Set the **Auto-refresh** schedule (optional):
+   - **Manual only** – Only refreshes when you manually trigger it (default)
+   - **Every hour** – Re-fetches content hourly
+   - **Every 6 hours** – Re-fetches every 6 hours
+   - **Every day** – Re-fetches daily
+   - **Every week** – Re-fetches weekly
+7. Click **Save**
+
+Fetching starts immediately and indexes content in the background. For crawl modes, you can also configure include/exclude patterns and set limits on pages and depth.
+
 ## Editing knowledge sources
 
 1. Go to **Support > Settings > Business knowledge**
@@ -66,6 +88,18 @@ When you ask a question or a customer sends a support message, the AI assistant:
 4. Cites the source name (e.g., "According to your refund policy...")
 
 The assistant treats knowledge content as reference material, not instructions. It doesn't follow directives embedded in the content.
+
+## Content safety
+
+PostHog scans uploaded content to protect against prompt injection attacks. Each document is classified before the AI assistant can search it:
+
+- **Safe** – Content passed the safety check and is searchable
+- **Unsafe** – Content was flagged as potentially malicious and won't appear in search results
+- **Unknown** – Content hasn't been classified yet or classification failed
+
+If a source contains unsafe documents, you'll see an "unsafe content" warning badge on it in the list. Unsafe documents are automatically excluded from AI searches.
+
+Classification happens in the background. New or updated content may take a few minutes to be classified and become searchable.
 
 ## Best practices
 
