@@ -1,5 +1,6 @@
 ---
 title: MCP server instrumentation
+platformLabel: MCP servers
 platformIconName: IconNetwork
 showStepsToc: true
 tableOfContents: [
@@ -26,185 +27,234 @@ tableOfContents: [
 ]
 ---
 
-The `@posthog/mcp` SDK instruments [Model Context Protocol](https://modelcontextprotocol.io/) servers with PostHog analytics. It captures tool calls, resource access, initialization events, and errors from your MCP server.
-
-When you enable AI tracing, the SDK also emits `$ai_span` events that appear in the PostHog AI Observability UI alongside your LLM generations.
+The `@posthog/mcp` SDK instruments [Model Context Protocol](https://modelcontextprotocol.io/) servers with PostHog analytics. It captures tool calls, resource access, initialization events, and errors from your MCP server automatically.
 
 ## Install dependencies
 
-Install the SDK in your MCP server project:
+Install the SDK and `posthog-node` in your MCP server project:
 
 <MultiLanguage>
 
 ```bash
-npm install @posthog/mcp
+npm install @posthog/mcp posthog-node
 ```
 
 ```bash
-yarn add @posthog/mcp
+yarn add @posthog/mcp posthog-node
 ```
 
 ```bash
-pnpm add @posthog/mcp
+pnpm add @posthog/mcp posthog-node
 ```
 
 </MultiLanguage>
 
+The SDK requires `@modelcontextprotocol/sdk` version 1.26 or higher and `posthog-node` version 5 or higher as peer dependencies.
+
 ## Instrument your MCP server
 
-Import the `track` function and call it with your MCP server instance. The SDK wraps request handlers and captures events automatically.
+Import `instrument` from `@posthog/mcp` and call it with your MCP server instance and a `posthog-node` client. The SDK wraps request handlers and captures events automatically.
 
 ```typescript
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
-import { track } from '@posthog/mcp'
+import { PostHog } from 'posthog-node'
+import { z } from 'zod'
+import { instrument } from '@posthog/mcp'
+
+const posthog = new PostHog('<ph_project_api_key>', {
+  host: '<ph_client_api_host>',
+})
 
 const server = new McpServer({
   name: 'my-mcp-server',
   version: '1.0.0',
 })
 
-// Register your tools
-server.tool('search', 'Search for items', { query: z.string() }, async (args) => {
-  // Your tool implementation
-})
+server.tool(
+  'search_docs',
+  'Search documentation',
+  { query: z.string() },
+  async ({ query }) => ({
+    content: [{ type: 'text', text: `Searching for "${query}"...` }],
+  })
+)
 
-// Instrument with PostHog
-track(server, {
-  apiKey: '<ph_project_token>',
-  host: '<ph_client_api_host>',
-  enableAITracing: true, // Emit $ai_span events for AI Observability
+// Instrument with PostHog – one line wraps your server
+const analytics = instrument(server, posthog)
+
+// Flush events before the process exits
+process.on('SIGTERM', async () => {
+  await posthog.shutdown()
+  process.exit(0)
 })
 ```
 
-The SDK supports both the high-level `McpServer` and the low-level `Server` from the MCP SDK. Calling `track()` multiple times on the same server is safe.
+The SDK supports both the high-level `McpServer` and the low-level `Server` from the MCP SDK. Calling `instrument()` multiple times on the same server is safe – subsequent calls are skipped.
 
-### Emit custom events
+### Capture custom events
 
-Use `publishCustomEvent` to capture custom events through the same pipeline:
+Use the `capture` method on the handle returned by `instrument()` to send custom events:
 
 ```typescript
-import { publishCustomEvent } from '@posthog/mcp'
+const analytics = instrument(server, posthog)
 
-// The server must already be tracked
-publishCustomEvent(server, {
-  eventName: 'custom_action',
+await analytics.capture({
+  event: 'feedback_submitted',
   properties: {
-    action_type: 'export',
-    items_count: 42,
+    rating: 5,
+    comment: 'Great experience',
   },
 })
 ```
+
+Custom events are enriched with `$session_id`, `distinct_id`, and server metadata automatically.
 
 ## Verify events
 
 After you instrument your server and call a tool, events appear in PostHog:
 
-1. Go to the [**Activity** tab](https://app.posthog.com/activity/explore) in PostHog
+1. Go to the [**Activity** tab](https://us.posthog.com/activity/explore) in PostHog
 2. Filter for events starting with `$mcp_`
 3. You should see `$mcp_tool_call`, `$mcp_initialize`, and other MCP events
 
-If you enabled `enableAITracing`, `$ai_span` events also appear in the AI Observability dashboard.
-
 ### Events captured
 
-| Event | When captured |
-| --- | --- |
-| `$mcp_tool_call` | Every tool invocation |
-| `$mcp_tools_list` | Client lists available tools |
-| `$mcp_initialize` | Client/server handshake |
-| `$mcp_resources_list` | Client lists resources |
-| `$mcp_resource_read` | Resource fetched |
-| `$mcp_prompts_list` | Client lists prompts |
-| `$mcp_prompt_get` | Prompt fetched |
-| `$mcp_custom` | Custom event via `publishCustomEvent()` |
-| `$exception` | Error during any operation |
-| `$ai_span` | Tool call (when `enableAITracing: true`) |
+| Event | When captured | Notable properties |
+| --- | --- | --- |
+| `$mcp_tool_call` | Every tool invocation | `$mcp_tool_name`, `$mcp_parameters`, `$mcp_response`, `$mcp_duration_ms`, `$mcp_is_error` |
+| `$mcp_tools_list` | Client lists available tools | `$mcp_listed_tool_names` |
+| `$mcp_initialize` | Client/server handshake | `$mcp_client_name`, `$mcp_client_version`, `$mcp_server_name` |
+| `$mcp_resources_list` | Client lists resources | – |
+| `$mcp_resource_read` | Resource fetched | `$mcp_resource_name`, `$mcp_parameters`, `$mcp_response` |
+| `$mcp_prompts_list` | Client lists prompts | – |
+| `$mcp_prompt_get` | Prompt fetched | `$mcp_resource_name` |
+| `$mcp_missing_capability` | Agent calls `get_more_tools` (when `reportMissing` is enabled) | `$mcp_intent` |
+| `$identify` | First identity resolved for a session | `$set` populated from identity properties |
+| `$exception` | Error during any operation | Standard PostHog error tracking properties |
+
+Events for sessions without a resolved identity are sent with `$process_person_profile: false`, so anonymous MCP traffic doesn't create person profiles.
 
 ## Configuration options
 
-| Option | Type | Default | Description |
-| --- | --- | --- | --- |
-| `apiKey` | `string` | Required | Your PostHog project token |
-| `host` | `string` | `https://us.i.posthog.com` | PostHog ingestion host |
-| `enableTracing` | `boolean` | `true` | Master switch for event emission |
-| `enableAITracing` | `boolean` | `false` | Emit `$ai_span` events for AI Observability |
-| `context` | `boolean \| { description: string }` | `true` | Inject a `context` parameter into tool schemas for capturing user intent |
-| `identify` | `function` | - | Async callback returning user identity |
-| `eventProperties` | `function` | - | Callback returning custom properties for all events |
-| `redactSensitiveInformation` | `function` | - | Custom redaction callback for sensitive data |
-| `logger` | `function` | - | Callback for SDK debug logs |
-
-### User identification
-
-Pass an `identify` callback to associate events with users:
+Pass options as the third argument to `instrument()`:
 
 ```typescript
-track(server, {
-  apiKey: '<ph_project_token>',
+const analytics = instrument(server, posthog, {
+  // Options here
+})
+```
+
+| Option | Type | Default | Description |
+| --- | --- | --- | --- |
+| `logger` | `(msg: string) => void` | – | STDIO-safe log sink for SDK warnings |
+| `enableExceptionAutocapture` | `boolean` | `true` | Emit `$exception` events when tools error |
+| `enableConversationId` | `boolean` | `false` | Inject `conversation_id` parameter and stamp `$mcp_conversation_id` on events |
+| `reportMissing` | `boolean` | `false` | Register `get_more_tools` virtual tool for capability gaps |
+| `context` | `boolean \| { description: string }` | `true` | Inject `context` parameter into tool schemas for capturing user intent |
+| `intentFallback` | `function` | – | Callback to derive intent when the client doesn't pass a `context` argument |
+| `identify` | `function` | – | Per-request callback returning user identity |
+| `eventProperties` | `function` | – | Callback returning custom properties for all events |
+| `beforeSend` | `function` | – | Inspect, modify, or drop events before sending |
+
+### Identify users
+
+Pass an `identify` callback to associate events with users. The callback receives the MCP request and extra metadata, and returns an identity object:
+
+```typescript
+instrument(server, posthog, {
   identify: async (request, extra) => {
-    // Return user identity from your auth system
-    const user = await getUserFromSession(extra.sessionId)
-    if (!user) return null
-    
+    const auth = extra?.headers?.authorization
+    if (!auth) return null
+
+    const user = await verifyToken(auth)
     return {
-      userId: user.id,
-      userName: user.name,
-      userData: {
-        email: user.email,
-        plan: user.plan,
-      },
+      distinctId: user.id,
+      properties: { name: user.name, email: user.email },
+      groups: { organization: user.orgId },
     }
   },
 })
 ```
 
-### Custom event properties
+The `properties` object is written to `$set` on the person profile. The `groups` object is stamped as `$groups` on every event.
 
-Add properties to every event:
+### Capture user intent
+
+The SDK injects an optional `context` parameter into every tool's input schema. When the LLM passes a value, it's stored as `$mcp_intent`.
+
+For clients that ignore the schema, supply `intentFallback` to derive intent from the request:
 
 ```typescript
-track(server, {
-  apiKey: '<ph_project_token>',
-  eventProperties: (event) => ({
-    server_version: '2.1.0',
-    deployment: process.env.DEPLOYMENT_ENV,
+instrument(server, posthog, {
+  intentFallback: (request) => {
+    const tool = request.params?.name
+    const args = request.params?.arguments ?? {}
+    if (tool === 'search_docs') return `Searching docs for "${args.query}"`
+    return tool ? `Invoking ${tool}` : null
+  },
+})
+```
+
+### Add custom properties
+
+Add properties to every event with the `eventProperties` callback:
+
+```typescript
+instrument(server, posthog, {
+  eventProperties: (request, extra) => ({
+    deployment: process.env.NODE_ENV,
+    region: 'us-east-1',
   }),
 })
 ```
 
-### Redacting sensitive data
+### Inspect or drop events
 
-The SDK automatically redacts common sensitive patterns (API keys, tokens, passwords). Use the `redactSensitiveInformation` callback for custom redaction:
+Use `beforeSend` to modify or drop events before they're sent. Return `null` to drop an event:
 
 ```typescript
-track(server, {
-  apiKey: '<ph_project_token>',
-  redactSensitiveInformation: async (value) => {
-    // Redact custom patterns
-    if (value.includes('SECRET_')) {
-      return '[REDACTED]'
+instrument(server, posthog, {
+  beforeSend: (event) => {
+    // Redact a property
+    if (event.properties.$mcp_parameters) {
+      event.properties.$mcp_parameters = '[redacted]'
     }
-    return value
+    // Drop exception events
+    if (event.event === '$exception') return null
+    return event
   },
 })
 ```
 
-## Shutdown
+## Graceful shutdown
 
-Call `shutdown()` on the PostHog client before your server exits to flush pending events:
+The SDK doesn't own the PostHog client, so flush events by calling `posthog.shutdown()` on your `posthog-node` instance before the process exits.
+
+In serverless environments (Lambda, Cloudflare Workers), flush explicitly at the end of each invocation:
 
 ```typescript
-import { PostHogMCP } from '@posthog/mcp'
+// At the end of the request/invocation
+await posthog.flush()
 
-const client = new PostHogMCP('<ph_project_token>')
+// Or keep the runtime alive until flush completes
+ctx.waitUntil(posthog.flush())
+```
 
-track(server, { client })
+## Logging in STDIO MCP servers
 
-// On shutdown
-await client.shutdown()
+MCP over STDIO uses stdout/stderr for protocol messages. Pass a `logger` callback to capture SDK warnings without interfering with the protocol:
+
+```typescript
+import fs from 'node:fs'
+
+const logStream = fs.createWriteStream('mcp.log', { flags: 'a' })
+
+instrument(server, posthog, {
+  logger: (msg) => logStream.write(`${new Date().toISOString()} ${msg}\n`),
+})
 ```
 
 ## Next steps
 
-- [AI Observability overview](/docs/ai-observability) - Learn about tracking LLM usage
-- [Model Context Protocol](https://modelcontextprotocol.io/) - MCP specification and documentation
+- [AI Observability overview](/docs/ai-observability) – Learn about tracking LLM usage
+- [Model Context Protocol](https://modelcontextprotocol.io/) – MCP specification and documentation

@@ -5702,6 +5702,11 @@ export const docsMenu = {
                             platformLogo: 'opentelemetry',
                         },
                         {
+                            name: 'MCP servers',
+                            url: '/docs/ai-observability/installation/mcp-servers',
+                            icon: 'IconNetwork',
+                        },
+                        {
                             name: 'Manual capture',
                             url: '/docs/ai-observability/installation/manual-capture',
                             icon: 'IconCode',
