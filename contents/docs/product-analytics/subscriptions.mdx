@@ -223,6 +223,12 @@ AI-generated reports are delivered as:
 - **Email**: A formatted HTML email with the markdown report rendered inline
 - **Slack**: A message to your chosen channel with the report content. Long reports are threaded to avoid hitting Slack's message length limits.
 
+### AI credit limits
+
+AI-generated reports consume [AI credits](/docs/posthog-ai/pricing). If your organization hits its credit limit, scheduled reports pause until credits reset at the start of your next billing period. The subscription stays enabled and resumes on schedule once credits are available again.
+
+When a report is skipped, the subscription owner receives an email explaining the pause and when deliveries will resume.
+
 ### Limitations
 
 - AI-generated reports do not include embedded charts or images – they contain text-based analysis only.
