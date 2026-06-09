@@ -15,6 +15,11 @@ tableOfContents: [
         depth: 1,
     },
     {
+        url: 'server-agnostic-capture',
+        value: 'Server-agnostic capture',
+        depth: 1,
+    },
+    {
         url: 'verify-events',
         value: 'Verify events',
         depth: 1,
@@ -108,6 +113,88 @@ await analytics.capture({
 ```
 
 Custom events are enriched with `$session_id`, `distinct_id`, and server metadata automatically.
+
+## Server-agnostic capture
+
+If your MCP server doesn't expose a `Server` or `McpServer` instance – for example, a custom Hono HTTP handler, Cloudflare Workers, or Vercel edge function – use `createMcpAnalytics` instead. You resolve identity and context per request and call the capture methods directly.
+
+```typescript
+import { PostHog } from 'posthog-node'
+import { createMcpAnalytics } from '@posthog/mcp'
+
+const posthog = new PostHog('<ph_project_api_key>', {
+  host: '<ph_client_api_host>',
+})
+const analytics = createMcpAnalytics(posthog)
+
+// In your tool dispatcher, after the tool runs:
+await analytics.captureToolCall({
+  toolName: 'search_docs',
+  parameters: { query: 'session replay' },
+  response: result,
+  durationMs: Date.now() - start,
+  isError: false,
+  distinctId: 'user_123',
+  sessionId: mcpSessionId,
+  groups: { organization: 'org_123' },
+  properties: { $mcp_client_name: 'claude-code' },
+})
+
+// On the initialize handshake:
+await analytics.captureInitialize({
+  clientName: 'claude-code',
+  clientVersion: '1.2.3',
+  distinctId: 'user_123',
+})
+
+// On a tools/list response:
+await analytics.captureToolsList({
+  toolNames: ['search_docs', 'run_sql'],
+  distinctId: 'user_123',
+})
+
+// Custom events:
+await analytics.capture({
+  event: 'feedback_submitted',
+  distinctId: 'user_123',
+  properties: { rating: 5 },
+})
+```
+
+Each call runs through the same pipeline as `instrument()` (sanitize, truncate, `$exception` fan-out, `beforeSend`) and emits the same `$mcp_*` events.
+
+### Differences from instrument()
+
+With `createMcpAnalytics`, you control identity and session per call:
+
+- **No wrapped server** – The SDK doesn't manage sessions, identity caching, the injected `context` parameter, `reportMissing`, or `conversation_id`.
+- **Identity per call** – Pass `distinctId`, `sessionId`, `groups`, and `properties` on each capture call.
+- **Session ID omitted when absent** – If you don't pass `sessionId`, the `$session_id` property is omitted entirely (not set to an empty value), so events don't bucket into a non-existent Session Replay session.
+- **Error fan-out** – On an errored tool call, the SDK still emits an `$exception` sibling (gated by `enableExceptionAutocapture`).
+- **Non-throwing** – All capture methods return a promise and never throw. A failure to capture analytics won't break your request.
+
+### Configuration
+
+Pass options as the second argument:
+
+```typescript
+const analytics = createMcpAnalytics(posthog, {
+  logger: (msg) => console.error(msg),
+  enableExceptionAutocapture: true,
+  beforeSend: (event) => {
+    if (event.properties.$mcp_parameters) {
+      event.properties.$mcp_parameters = '[redacted]'
+    }
+    return event
+  },
+})
+```
+
+| Option | Type | Default | Description |
+| --- | --- | --- | --- |
+| `logger` | `(msg: string) => void` | – | STDIO-safe log sink for SDK warnings |
+| `enableExceptionAutocapture` | `boolean` | `true` | Emit `$exception` events when tools error |
+| `beforeSend` | `function` | – | Inspect, modify, or drop events before sending |
 
 ## Verify events
 
