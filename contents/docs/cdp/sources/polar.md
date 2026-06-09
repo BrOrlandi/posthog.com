@@ -36,6 +36,21 @@ The Polar connector syncs billing data from your Polar.sh account into PostHog, 
 
 Once syncing completes, you can start using Polar data in PostHog.
 
+## Available tables
+
+| Table | Description | Sync method |
+| ----- | ----------- | ----------- |
+| `customers` | Customers in your Polar organization | Full refresh |
+| `products` | Products you sell on Polar | Full refresh |
+| `orders` | Orders placed through Polar | Full refresh |
+| `subscriptions` | Active and past subscriptions | Full refresh |
+| `refunds` | Refunds issued | Full refresh |
+| `checkouts` | Checkout sessions | Full refresh |
+| `benefits` | Benefits attached to your products | Full refresh |
+| `organizations` | Your Polar organizations | Full refresh |
+
+**Incremental** tables sync only new or updated records on each run. **Full refresh** tables reload all data on each sync.
+
 ## Configuration
 
 <SourceParameters />
